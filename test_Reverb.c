@@ -12,10 +12,8 @@
 
  #define CHANNELS_DOUBLE 2
  #define CHANNELS_SINGLE 1
- #define BYTE_RATE_16 16
- #define BYTE_RATE_8 8
- #define SAMPLE_RATE_48 48000
  #define BYTE_MASK 0xff
+
 
 /*convert pcm_t type data into  sample_t type*/
 static void  convert_pcm2sample(pcm_t *pcm, sample_t *input){
@@ -75,9 +73,9 @@ static void parse_wave_data(wave_t *wave, pcm_t *pcm){
 	if (wave->format.num_channel == CHANNELS_DOUBLE){
 		pcm->flag_left = 1;
 		pcm->flag_right = 1;
-		uint32_t num_of_sample = (uint32_t)(wave->data.size/4);
-		pcm->num = num_of_sample;
 		int byte_per_sample = (int) (wave->format.bits/8);
+		uint32_t num_of_sample = (uint32_t)(wave->data.size/byte_per_sample/2);
+		pcm->num = num_of_sample;
 		pcm->left = (uint16_t*) malloc( sizeof(uint16_t)*num_of_sample);
 		pcm->right = (uint16_t*) malloc( sizeof(uint16_t)*num_of_sample);
 
@@ -94,9 +92,9 @@ static void parse_wave_data(wave_t *wave, pcm_t *pcm){
 	else if (wave->format.num_channel == CHANNELS_SINGLE){
 		pcm->flag_left = 1;
 		pcm->flag_right = 0;
-		uint32_t num_of_sample = (uint32_t)(wave->data.size/2);
-		pcm->num = num_of_sample;
 		int byte_per_sample = (int) (wave->format.bits/8);
+		uint32_t num_of_sample = (uint32_t)(wave->data.size/byte_per_sample);
+		pcm->num = num_of_sample;
 		pcm->left = (uint16_t*) malloc( sizeof(uint16_t)*num_of_sample);
 		pcm->right = (uint16_t*) malloc( sizeof(uint16_t)*num_of_sample);
 
@@ -175,6 +173,7 @@ static void parse_wave_data(wave_t *wave, pcm_t *pcm){
 	printf("number of sample:%d\n", pcm.num);
 	printf("number of channel:%d\n", wave.format.num_channel);
 #endif
+	/* apply for buffer for input and output*/
 	input = (sample_t*) malloc(sizeof(sample_t) * pcm.num);
 	memset(input, 0, sizeof(sample_t) * pcm.num);
 	output = (sample_t *) malloc(sizeof(sample_t) * pcm.num);
@@ -199,7 +198,7 @@ static void parse_wave_data(wave_t *wave, pcm_t *pcm){
 #ifdef _TEST_	
 	;
 #endif
-
+	/*	free the buffer */
 	if (wave.data.data != NULL)
 		free(wave.data.data);	
 	if (pcm.left != NULL)
@@ -210,6 +209,7 @@ static void parse_wave_data(wave_t *wave, pcm_t *pcm){
 		free(input);
 	if (output != NULL)
 		free(output);
+
 	fclose(fp);
 	fclose(fp_out);
 

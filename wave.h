@@ -1,11 +1,7 @@
 #ifndef _WAV_H_
 #define _WAV_H_
 #include <stdint.h>
-
-#define clampi(v, min, max) \
-	(v < min ? min : (v > max ? max : v))
-#define clampf(v, min, max) \
- 	( v < min ? min : (v > max ? max : v)) 
+ 
 
 typedef struct {
 	float L; /*left channel sample*/

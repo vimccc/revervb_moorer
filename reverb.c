@@ -7,10 +7,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-// utility functions
-static inline float db2lin(float db){ // dB to linear
-	return powf(10.0f, 0.05f * db);
-}
 
 static bool isprime(int v){
 	if (v < 0)
@@ -35,7 +31,7 @@ static inline int nextprime(int v){
 	return v;
 }
 
-// generate a random float [0, 1) using a simple (but good quality) RNG
+/* generate a random float [0, 1) using a simple (but good quality) RNG */
 static inline float randfloat(){
 	static uint32_t seed = 123; // doesn't matter
 	static uint32_t i = 456; // doesn't matter
@@ -47,10 +43,12 @@ static inline float randfloat(){
 	return u.f - 1.0;
 }
 
+/*---------------------------------------------------------------------------------*/
 /* delay module */
+
 static inline void delay_make(rv_delay_t *delay, int size){
 	delay->pos = 0;
-	delay->size = clampi(size, 1, SF_REVERB_DS);
+	delay->size = clampi(size, 1, REVERB_DS);
 	memset(delay->buf, 0, sizeof(float) * delay->size);
 }
 
@@ -72,14 +70,11 @@ static inline float delay_get(rv_delay_t *delay, int offset){
 	return delay->buf[pos];
 }
 
-static inline float delay_getlast(rv_delay_t *delay){
-	return delay->buf[delay->pos];
-}
-
-
+/*-----------------------------------------------------------------------------------------------------*/
 /* 1st iir filter module */
+
+/* 1st order IIR lowpass filter (Butterworth) */
 static inline void iir1_makeLPF(rv_iir1_t *iir1, int rate, float freq){
-	// 1st order IIR lowpass filter (Butterworth)
 	freq = clampf(freq, 0, rate / 2);
 	float omega2 = (float)M_PI * freq / (float)rate;
 	float tano2 = tanf(omega2);
@@ -88,8 +83,8 @@ static inline void iir1_makeLPF(rv_iir1_t *iir1, int rate, float freq){
 	iir1->y1 = 0;
 }
 
+/* 1st order IIR highpass filter (Butterworth) */
 static inline void iir1_makeHPF(rv_iir1_t *iir1, int rate, float freq){
-	// 1st order IIR highpass filter (Butterworth)
 	freq = clampf(freq, 0, rate / 2);
 	float omega2 = (float)M_PI * freq / (float)rate;
 	float tano2 = tanf(omega2);
@@ -104,8 +99,9 @@ static inline float iir1_step(rv_iir1_t *iir1, float v){
 	iir1->y1 = out * iir1->a2 + v * iir1->b2;
 	return out;
 }
+/*---------------------------------------------------------------------------------------------------*/
+/* biquad filter module*/
 
-/* biquad filter */
 static inline void biquad_makeLPF(rv_biquad_t *biquad, int rate, float freq, float bw){
 	freq = clampf(freq, 0, rate / 2);
 	float omega = 2.0f * (float)M_PI * freq / (float)rate;
@@ -168,7 +164,9 @@ static inline float biquad_step(rv_biquad_t *biquad, float v){
 	return out;
 }
 
+/*----------------------------------------------------------------------------------------------------*/
 /* early reflection module */
+
 static inline void earlyref_make(rv_earlyref_t *earlyref, int rate, float factor, float width){
 	static const sample_t delaytbl[18] = {
 		// seconds to look backwards
@@ -239,16 +237,17 @@ static inline sample_t earlyref_step(rv_earlyref_t *earlyref, sample_t input){
 	return (sample_t){ L, R };
 }
 
-
+/*--------------------------------------------------------------------------------------------------*/
 /* oversample module */
+
 static inline void oversample_make(rv_oversample_t *oversample, int factor){
-	oversample->factor = clampi(factor, 1, SF_REVERB_OF);
+	oversample->factor = clampi(factor, 1, REVERB_OF);
 	biquad_makeLPFQ(&oversample->lpfU, 2 * oversample->factor, 1.0f,
 		0.5773502691896258f); // 1/sqrt(3)
 	oversample->lpfD = oversample->lpfU;
 }
 
-// output length must be oversample->factor
+/* output length must be oversample->factor */
 static inline void oversample_stepup(rv_oversample_t *oversample, float input, float *output){
 	if (oversample->factor == 1){
 		output[0] = input;
@@ -259,7 +258,7 @@ static inline void oversample_stepup(rv_oversample_t *oversample, float input, f
 		output[i] = biquad_step(&oversample->lpfU, 0);
 }
 
-// input length must be oversample->factor
+/* input length must be oversample->factor */
 static inline float oversample_stepdown(rv_oversample_t *oversample, float *input){
 	if (oversample->factor == 1)
 		return input[0];
@@ -268,7 +267,7 @@ static inline float oversample_stepdown(rv_oversample_t *oversample, float *inpu
 	return input[0];
 }
 
-
+/*------------------------------------------------------------------------------------------------*/
 /* dccut module*/
 static inline void dccut_make(rv_dccut_t *dccut, int rate, float freq){
 	freq = clampf(freq, 0, rate / 2);
@@ -288,16 +287,18 @@ static inline float dccut_step(rv_dccut_t *dccut, float v){
 }
 
 
+/*------------------------------------------------------------------------------------------------*/
 /* noise module */
+
 static inline void noise_make(rv_noise_t *noise){
-	noise->pos = SF_REVERB_NS;
+	noise->pos = REVERB_NS;
 }
 
 static inline float noise_step(rv_noise_t *noise){
-	if (noise->pos >= SF_REVERB_NS){
+	if (noise->pos >= REVERB_NS){
 		// need to generate more noise
 		noise->pos = 0;
-		int len = SF_REVERB_NS;
+		int len = REVERB_NS;
 		int tot = 1;
 		float r = 0.8f;
 		float rmul = 0.7071067811865475f; // 1/sqrt(2)
@@ -320,7 +321,9 @@ static inline float noise_step(rv_noise_t *noise){
 }
 
 
+/*-----------------------------------------------------------------------------------------------*/
 /* lfo module*/
+
 static inline void lfo_make(rv_lfo_t *lfo, int rate, float freq){
 	lfo->count = 0;
 	lfo->re = 1.0f;
@@ -347,10 +350,13 @@ static inline float lfo_step(rv_lfo_t *lfo){
 	return v;
 }
 
+
+/*------------------------------------------------------------------------------------------------*/
 /* 1st order allpass filter module */
+
 static inline void allpass1_make(rv_allpass1_t *allpass, int size, float feedback, float decay){
 	allpass->pos = 0;
-	allpass->size = clampi(size, 1, SF_REVERB_APS);
+	allpass->size = clampi(size, 1, REVERB_APS);
 	allpass->feedback = feedback;
 	allpass->decay = decay;
 	memset(allpass->buf, 0, sizeof(float) * allpass->size);
@@ -365,13 +371,15 @@ static inline float allpass1_step(rv_allpass1_t *allpass, float v){
 }
 
 
+/*----------------------------------------------------------------------------------------------*/
 /* 2nd order allpass filter order*/
+
 static inline void allpass2_make(rv_allpass2_t *allpass2, int size1, int size2, float feedback1,
 	float feedback2, float decay1, float decay2){
 	allpass2->pos1 = 0;
 	allpass2->pos2 = 0;
-	allpass2->size1 = clampi(size1, 1, SF_REVERB_AP2S1);
-	allpass2->size2 = clampi(size2, 1, SF_REVERB_AP2S2);
+	allpass2->size1 = clampi(size1, 1, REVERB_AP2S1);
+	allpass2->size2 = clampi(size2, 1, REVERB_AP2S2);
 	allpass2->feedback1 = feedback1;
 	allpass2->feedback2 = feedback2;
 	allpass2->decay1 = decay1;
@@ -415,12 +423,14 @@ static inline float allpass2_get2(rv_allpass2_t *allpass2, int offset){
 }
 
 
+/*--------------------------------------------------------------------------------------------*/
 /* 3rd order allpass filter module */
+
 static inline void allpass3_make(rv_allpass3_t *allpass3, int size1, int msize1, int size2,
 	int size3, float feedback1, float feedback2, float feedback3, float decay1, float decay2,
 	float decay3){
-	size1 = clampi(size1, 1, SF_REVERB_AP3S1);
-	msize1 = clampi(msize1, 1, SF_REVERB_AP3M1);
+	size1 = clampi(size1, 1, REVERB_AP3S1);
+	msize1 = clampi(msize1, 1, REVERB_AP3M1);
 	if (msize1 > size1)
 		msize1 = size1;
 	int newsize = size1 + msize1;
@@ -430,8 +440,8 @@ static inline void allpass3_make(rv_allpass3_t *allpass3, int size1, int msize1,
 	allpass3->pos3 = 0;
 	allpass3->size1 = newsize;
 	allpass3->msize1 = msize1;
-	allpass3->size2 = clampi(size2, 1, SF_REVERB_AP3S2);
-	allpass3->size3 = clampi(size3, 1, SF_REVERB_AP3S3);
+	allpass3->size2 = clampi(size2, 1, REVERB_AP3S2);
+	allpass3->size3 = clampi(size3, 1, REVERB_AP3S3);
 	allpass3->feedback1 = feedback1;
 	allpass3->feedback2 = feedback2;
 	allpass3->feedback3 = feedback3;
@@ -503,11 +513,12 @@ static inline float allpass3_get3(rv_allpass3_t *allpass3, int offset){
 }
 
 
+/*--------------------------------------------------------------------------------------------*/
 /* allpassm */
 static inline void allpassm_make(rv_allpassm_t *allpassm, int size, int msize, float feedback,
 	float decay){
-	size = clampi(size, 1, SF_REVERB_APMS);
-	msize = clampi(msize, 1, SF_REVERB_APMM);
+	size = clampi(size, 1, REVERB_APMS);
+	msize = clampi(msize, 1, REVERB_APMM);
 	if (msize > size)
 		msize = size;
 	int newsize = size + msize;
@@ -541,10 +552,11 @@ static inline float allpassm_step(rv_allpassm_t *allpassm, float v, float mod, f
 }
 
 
+/*-----------------------------------------------------------------------------------------*/
 /* comb filter module*/
 static inline void comb_make(rv_comb_t *comb, int size){
 	comb->pos = 0;
-	comb->size = clampi(size, 1, SF_REVERB_CS);
+	comb->size = clampi(size, 1, REVERB_CS);
 	memset(comb->buf, 0, sizeof(float) * comb->size);
 }
 
@@ -556,7 +568,9 @@ static inline float comb_step(rv_comb_t *comb, float v, float feedback){
 }
 
 
+/*-----------------------------------------------------------------------------------------*/
 /*  reverb implementation */
+
 void reverb_preset(reverb_state_t *rv, int rate, reverb_preset_t preset){
 	// sorry for the bad formatting, I've tried to cram this in as best as I could
 	struct {
@@ -745,7 +759,7 @@ void reverb_process(reverb_state_t *rv, int size, sample_t *input, sample_t *out
 	const float crossfeed = 0.4f;
 
 	// oversample buffer
-	float osL[SF_REVERB_OF], osR[SF_REVERB_OF];
+	float osL[REVERB_OF], osR[REVERB_OF];
 
 	for (int i = 0; i < size; i++){
 		// early reflection
@@ -785,8 +799,8 @@ void reverb_process(reverb_state_t *rv, int size, sample_t *input, sample_t *out
 			outR = iir1_step(&rv->clpfR, outR + crossfeed * crossL);
 
 			// bass boost
-			crossL = delay_getlast(&rv->cdelayL);
-			crossR = delay_getlast(&rv->cdelayR);
+			crossL = rv->cdelayL.buf[rv->cdelayL.pos]; 
+			crossR = rv->cdelayR.buf[rv->cdelayR.pos]; 
 			outL += rv->loopdecay *
 				(crossR + rv->bassb * biquad_step(&rv->basslpL, biquad_step(&rv->bassapL, crossR)));
 			outR += rv->loopdecay *
@@ -818,7 +832,6 @@ void reverb_process(reverb_state_t *rv, int size, sample_t *input, sample_t *out
 				delay_step(&rv->cbassd1R, outR))),
 					-lfo));
 
-			//
 			float D1 =
 				delay_get    (&rv->cbassd1L , rv->outco[ 0]);
 			float D2 =
